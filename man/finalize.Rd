@@ -37,14 +37,24 @@ get_n_frac_range(object, x, log_vals = FALSE, frac = c(1/10, 5/10), ...)
 
 get_n(object, x, log_vals = FALSE, ...)
 
-get_rbf_range(object, x, seed = sample.int(10^5, 1), ...)
+get_rbf_range(
+  object,
+  x,
+  seed = sample.int(10^5, 1),
+  frac = 0.5,
+  scaled = TRUE,
+  n_pairs = 1000L,
+  chunk_size = 250L,
+  ...
+  )
 }
 \arguments{
 \item{object}{A \code{param} object or a list of \code{param} objects.}
 
 \item{...}{Other arguments to pass to the underlying parameter
-finalizer functions. For example, for \code{get_rbf_range()}, the dots are passed
-along to \code{\link[kernlab:sigest]{kernlab::sigest()}}.}
+finalizer functions. These must be empty for \code{get_rbf_range()}; its
+arguments are named explicitly (\code{frac}, \code{scaled}, \code{n_pairs},
+\code{chunk_size}, \code{seed}).}
 
 \item{x}{The predictor data. In some cases (see below) this should only
 include numeric data.}
@@ -56,9 +66,27 @@ object is complete, should it update the ranges anyway?}
 
 \item{frac}{A double for the fraction of the data to be used for the upper
 bound. For \code{get_n_frac_range()} and \code{get_batch_sizes()}, a vector of two
-fractional values are required.}
+fractional values are required. For \code{get_rbf_range()}, it is the fraction of
+rows that contribute distance pairs (as in \code{\link[kernlab:sigest]{kernlab::sigest()}}); the number
+of pairs is capped at \code{n_pairs}.}
 
 \item{seed}{An integer to control the randomness of the calculations.}
+
+\item{scaled}{A single logical or a logical vector with one element per
+column of \code{x} indicating which columns should be scaled to unit variance
+before distances are computed. If any scaled column has zero variance,
+scaling is disabled for every column and a warning is issued, matching the
+\code{kernlab::sigest()} heuristic.}
+
+\item{n_pairs}{A positive integer: the sample budget, i.e. the maximum
+number of randomly sampled pairs of rows whose squared distances are used
+to estimate the quantiles. Capping the budget keeps both the random draws
+and the resulting distance vector bounded regardless of the size of \code{x}.}
+
+\item{chunk_size}{A positive integer: the memory budget for distance
+calculations. Distances are computed in blocks of at most this many pairs;
+only the rows involved in one block are materialized. For sparse \code{x} the
+full data set is never densified.}
 }
 \value{
 An updated \code{param} object or a list of updated \code{param} objects depending
@@ -84,7 +112,25 @@ log10 scale, respectively).
 rows in the data or a fraction of the total number of rows.
 
 \code{get_rbf_range()} sets both bounds based on the heuristic defined in
-\code{\link[kernlab:sigest]{kernlab::sigest()}}. It requires that all columns in \code{x} be numeric.
+\code{\link[kernlab:sigest]{kernlab::sigest()}}. It requires that all columns in \code{x} be numeric. The
+same 10th, 50th and 90th quantiles of pairwise squared distances are
+estimated, but the computation is memory bounded: rows are sampled through
+a local random stream, distances are computed in blocks no larger than
+\code{chunk_size} pairs, and sparse matrices keep their sparse structure (only
+the rows participating in a block are materialized). The number of sampled
+pairs is capped at \code{n_pairs}, so neither the random draw nor the distance
+vector grows with the size of \code{x}.
+
+Inputs follow explicit rules:
+\itemize{
+\item all columns must be numeric;
+\item all values must be finite, so missing (\code{NA}), \code{NaN} and infinite values
+raise an error instead of being silently dropped;
+\item columns with zero variance (constant columns) disable scaling for all
+columns, with a warning;
+\item data whose sampled rows are all identical leave no positive distances,
+which raises an error because the sigma quantiles cannot be estimated.
+}
 }
 \examples{
 \dontshow{if (interactive() || identical(Sys.getenv("IN_PKGDOWN"), "true")) withAutoprint(\{ # examplesIf}

@@ -14,11 +14,14 @@ include numeric data.}
 
 \item{frac}{A double for the fraction of the data to be used for the upper
 bound. For \code{get_n_frac_range()} and \code{get_batch_sizes()}, a vector of two
-fractional values are required.}
+fractional values are required. For \code{get_rbf_range()}, it is the fraction of
+rows that contribute distance pairs (as in \code{\link[kernlab:sigest]{kernlab::sigest()}}); the number
+of pairs is capped at \code{n_pairs}.}
 
 \item{...}{Other arguments to pass to the underlying parameter
-finalizer functions. For example, for \code{get_rbf_range()}, the dots are passed
-along to \code{\link[kernlab:sigest]{kernlab::sigest()}}.}
+finalizer functions. These must be empty for \code{get_rbf_range()}; its
+arguments are named explicitly (\code{frac}, \code{scaled}, \code{n_pairs},
+\code{chunk_size}, \code{seed}).}
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}

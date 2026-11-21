@@ -24,6 +24,8 @@ Imports:
     glue,
     hardhat (>= 1.1.0),
     lifecycle,
+    Matrix,
+    methods,
     pillar,
     purrr,
     rlang (>= 1.1.0),

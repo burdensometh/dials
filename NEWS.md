@@ -1,5 +1,7 @@
 # dials (development version)
 
+* `get_rbf_range()` no longer densifies the whole initialization data set via `as.matrix()`. It now estimates the same `kernlab::sigest()` quantiles through a memory-bounded path: distance pairs are drawn from a local random stream under a sample budget (`n_pairs`), squared distances are computed in blocks (`chunk_size`) materializing only the rows of one block at a time, and sparse matrices (via the **Matrix** package) retain their sparse structure throughout. Input rules are now explicit: non-numeric columns, non-finite values (`NA`, `NaN`, `Inf`), zero-variance columns, and data without any variation between rows each produce a documented error or warning. Results with the same `seed` are reproducible and numerically identical to the previous implementation for in-budget data.
+
 # dials 1.4.5
 
 * `grid_hybrid()` is a new function that crosses a space-filling design for some parameters with a regular grid for others. This is helpful for "submodel" parameters that are cheap to tune (#451).
