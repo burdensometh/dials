@@ -251,6 +251,17 @@ make_hybrid <- function(
       original = original,
       type = sfd_type
     )
+    if (has_activation(x)) {
+      plan <- activation_plan(x$id, activation_col(x), call = call)
+      res <- apply_activation_to_grid(
+        res,
+        params = set_names(x$object, x$id),
+        ids = x$id,
+        plan = plan,
+        call = call
+      )
+      res <- new_param_grid(res)
+    }
     return(res)
   }
   if (all(reg_param)) {
@@ -261,13 +272,35 @@ make_hybrid <- function(
   sfd_param <- x[!reg_param, ]
   reg_param <- x[reg_param, ]
 
+  # Activation conditions are applied to the full crossed design below; they
+  # may reference parameters that do not belong to either subset, so the
+  # subsets are generated without them.
   sfd <- grid_space_filling(
-    sfd_param,
+    strip_activation(sfd_param),
     size = sfd_size,
     original = original,
     type = sfd_type
   )
-  reg <- grid_regular(reg_param, levels = reg_levels, original = original)
+  reg <- grid_regular(
+    strip_activation(reg_param),
+    levels = reg_levels,
+    original = original
+  )
   res <- tidyr::crossing(sfd, reg)
-  res[, x$id]
+  res <- res[, x$id]
+
+  if (has_activation(x)) {
+    # The same activation plan used by the regular and random grids is applied
+    # here, in dependency order, overwriting inactive cells with the sentinel.
+    plan <- activation_plan(x$id, activation_col(x), call = call)
+    res <- apply_activation_to_grid(
+      res,
+      params = set_names(x$object, x$id),
+      ids = x$id,
+      plan = plan,
+      call = call
+    )
+  }
+
+  new_param_grid(res)
 }

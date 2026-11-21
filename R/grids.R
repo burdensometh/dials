@@ -107,7 +107,8 @@ grid_regular.parameters <- function(
     !!!params,
     levels = levels,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = x
   )
   names(grd) <- x$id
   grd
@@ -145,7 +146,8 @@ grid_regular.list <- function(
     !!!params,
     levels = levels,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = y
   )
   names(grd) <- y$id
   grd
@@ -180,7 +182,8 @@ grid_regular.param <- function(
     !!!params,
     levels = levels,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = y
   )
   names(grd) <- y$id
   grd
@@ -191,6 +194,7 @@ make_regular_grid <- function(
   levels = 3,
   original = TRUE,
   filter = NULL,
+  pset = NULL,
   call = caller_env()
 ) {
   check_levels(levels, call = call)
@@ -211,7 +215,7 @@ make_regular_grid <- function(
   }
 
   if (p == 1) {
-    param_seq <- map(params, value_seq, n = levels, original = original)
+    grid_levels <- rep(as.list(levels), length(params))
   } else {
     if (all(rlang::has_name(levels, names(params)))) {
       levels <- levels[names(params)]
@@ -228,11 +232,33 @@ make_regular_grid <- function(
         call = call
       )
     }
-    param_seq <- map2(params, as.list(levels), value_seq, original = original)
+    grid_levels <- as.list(levels)
+  }
+  names(grid_levels) <- param_names
+
+  if (!is.null(pset) && has_activation(pset)) {
+    # Activation conditions are honored during generation rather than by
+    # filtering a full Cartesian product.
+    aligned <- match(param_names, pset$id)
+    plan <- activation_plan(
+      param_names,
+      activation_col(pset)[aligned],
+      call = call
+    )
+    parameters <- make_activated_regular_grid(
+      params = params,
+      ids = param_names,
+      plan = plan,
+      levels = grid_levels,
+      original = original,
+      call = call
+    )
+  } else {
+    param_seq <- map2(params, grid_levels, value_seq, original = original)
+    names(param_seq) <- param_names
+    parameters <- expand.grid(param_seq, stringsAsFactors = FALSE)
   }
 
-  names(param_seq) <- param_names
-  parameters <- expand.grid(param_seq, stringsAsFactors = FALSE)
   if (!(quo_is_null(filter_quo))) {
     parameters <- dplyr::filter(parameters, !!filter_quo)
   }
@@ -305,7 +331,8 @@ grid_random.parameters <- function(
     !!!params,
     size = size,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = x
   )
   names(grd) <- x$id
   grd
@@ -337,7 +364,8 @@ grid_random.list <- function(x, ..., size = 5, original = TRUE, filter = NULL) {
     !!!params,
     size = size,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = y
   )
   names(grd) <- y$id
   grd
@@ -372,7 +400,8 @@ grid_random.param <- function(
     !!!params,
     size = size,
     original = original,
-    filter = {{ filter }}
+    filter = {{ filter }},
+    pset = y
   )
   names(grd) <- y$id
   grd
@@ -383,6 +412,7 @@ make_random_grid <- function(
   size = 5,
   original = TRUE,
   filter = NULL,
+  pset = NULL,
   call = caller_env()
 ) {
   check_number_whole(size, min = 1, call = call)
@@ -394,9 +424,28 @@ make_random_grid <- function(
 
   # for now assume equal levels
   param_names <- names(param_quos)
-  parameters <- map(params, value_sample, n = size, original = original)
-  names(parameters) <- param_names
-  parameters <- as_tibble(parameters)
+  if (!is.null(pset) && has_activation(pset)) {
+    # Sample parameters in dependency order, filling inactive cells with the
+    # sentinel before deduplication.
+    aligned <- match(param_names, pset$id)
+    plan <- activation_plan(
+      param_names,
+      activation_col(pset)[aligned],
+      call = call
+    )
+    parameters <- make_activated_random_grid(
+      params = params,
+      ids = param_names,
+      plan = plan,
+      size = size,
+      original = original,
+      call = call
+    )
+  } else {
+    parameters <- map(params, value_sample, n = size, original = original)
+    names(parameters) <- param_names
+    parameters <- as_tibble(parameters)
+  }
   if (!(quo_is_null(filter_quo))) {
     parameters <- dplyr::filter(parameters, !!filter_quo)
   }

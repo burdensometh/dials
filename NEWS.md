@@ -1,5 +1,7 @@
 # dials (development version)
 
+* `activate()` and `deactivate()` declare and remove parameter activation conditions. A condition is an expression referencing other parameter identifiers that determines when a parameter is active. `grid_regular()`, `grid_random()`, and `grid_hybrid()` now honor the same activation plan while generating candidates: parameters are processed in dependency order and inactive cells receive an explicit type-consistent `NA` sentinel instead of taking part in the Cartesian expansion. Unknown references, dependency cycles, and unsatisfiable conditions are rejected before any candidates are generated. The `filter` argument remains available for post-generation row filtering.
+
 # dials 1.4.5
 
 * `grid_hybrid()` is a new function that crosses a space-filling design for some parameters with a regular grid for others. This is helpful for "submodel" parameters that are cheap to tune (#451).

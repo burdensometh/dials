@@ -11,6 +11,7 @@ parameters_constr(
   component,
   component_id,
   object,
+  activation = NULL,
   ...,
   call = caller_env()
 )
@@ -20,6 +21,10 @@ parameters_constr(
 length.}
 
 \item{object}{A list of \code{param} objects or NA values.}
+
+\item{activation}{A list the same length as \code{object} holding activation
+conditions (as quosures) or \code{NULL} for parameters that are always active.
+See \code{\link[=activate]{activate()}}.}
 
 \item{...}{These dots are for future extensions and must be empty.}
 

@@ -72,7 +72,8 @@ parameters.list <- function(x, ...) {
     rep("list", p),
     rep("unknown", p),
     rep("unknown", p),
-    x
+    x,
+    activation = rep(list(NULL), p)
   )
 }
 
@@ -81,6 +82,9 @@ parameters.list <- function(x, ...) {
 #' @param name,id,source,component,component_id Character strings with the same
 #' length.
 #' @param object A list of `param` objects or NA values.
+#' @param activation A list the same length as `object` holding activation
+#' conditions (as quosures) or `NULL` for parameters that are always active.
+#' See [activate()].
 #' @inheritParams rlang::args_dots_empty
 #' @param call The call passed on to [cli::cli_abort()].
 #'
@@ -95,6 +99,7 @@ parameters_constr <- function(
   component,
   component_id,
   object,
+  activation = NULL,
   ...,
   call = caller_env()
 ) {
@@ -128,6 +133,13 @@ parameters_constr <- function(
     )
   }
 
+  n <- length(name)
+  if (is.null(activation)) {
+    activation <- rep(list(NULL), n)
+  } else {
+    check_activation_input(activation, n, call = call)
+  }
+
   res <-
     new_tibble(
       list(
@@ -136,12 +148,31 @@ parameters_constr <- function(
         source = source,
         component = component,
         component_id = component_id,
-        object = object
+        object = object,
+        activation = activation
       ),
-      nrow = length(name)
+      nrow = n
     )
   class(res) <- c("parameters", class(res))
   res
+}
+
+check_activation_input <- function(x, n, ..., call = caller_env()) {
+  check_dots_empty()
+  if (!is.list(x) || length(x) != n) {
+    cli::cli_abort(
+      "{.arg activation} must be a list of length {n} or {.code NULL}.",
+      call = call
+    )
+  }
+  is_quo <- map_lgl(x, function(elt) is.null(elt) || is_quosure(elt))
+  if (!all(is_quo)) {
+    cli::cli_abort(
+      "Every element of {.arg activation} must be a quosure or {.code NULL}.",
+      call = call
+    )
+  }
+  invisible(NULL)
 }
 
 unk_check <- function(x) {
@@ -179,6 +210,18 @@ print.parameters <- function(x, ...) {
     utils::capture.output(print.data.frame(print_x, row.names = FALSE))
   )
   cli::cli_end()
+
+  if (rlang::has_name(x, "activation")) {
+    activated <- map_lgl(x$activation, function(elt) !is.null(elt))
+    if (any(activated)) {
+      active_ids <- x$id[activated]
+      cli::cli_par()
+      cli::cli_text(
+        "Activation condition{?s} declared for: {.val {active_ids}}."
+      )
+      cli::cli_end()
+    }
+  }
 
   null_obj <- map_lgl(x$object, \(.x) all(is.na(.x)))
 
