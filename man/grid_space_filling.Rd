@@ -8,9 +8,23 @@
 \alias{grid_space_filling.param}
 \title{Space-filling parameter grids}
 \usage{
-grid_space_filling(x, ..., size = 5, type = "any", original = TRUE)
+grid_space_filling(
+  x,
+  ...,
+  size = 5,
+  type = "any",
+  original = TRUE,
+  anchors = NULL
+)
 
-\method{grid_space_filling}{default}(x, ..., size = 5, type = "any", original = TRUE)
+\method{grid_space_filling}{default}(
+  x,
+  ...,
+  size = 5,
+  type = "any",
+  original = TRUE,
+  anchors = NULL
+)
 
 \method{grid_space_filling}{parameters}(
   x,
@@ -19,7 +33,8 @@ grid_space_filling(x, ..., size = 5, type = "any", original = TRUE)
   type = "any",
   variogram_range = 0.5,
   iter = 1000,
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 )
 
 \method{grid_space_filling}{list}(
@@ -29,7 +44,8 @@ grid_space_filling(x, ..., size = 5, type = "any", original = TRUE)
   type = "any",
   variogram_range = 0.5,
   iter = 1000,
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 )
 
 \method{grid_space_filling}{param}(
@@ -39,7 +55,8 @@ grid_space_filling(x, ..., size = 5, type = "any", original = TRUE)
   variogram_range = 0.5,
   iter = 1000,
   type = "any",
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 )
 }
 \arguments{
@@ -68,6 +85,13 @@ for \code{type = "max_entropy"}.}
 
 \item{iter}{An integer for the maximum number of iterations used to find
 a good design. Only used for \code{type = "max_entropy"}.}
+
+\item{anchors}{An optional data frame of parameter combinations that must be
+kept exactly as supplied. Its columns must be named with the parameter
+identifiers and it cannot contain duplicates or missing values. When used,
+\code{size} is the total number of combinations returned (anchors plus new
+combinations) and new combinations are selected by a maximin criterion;
+\code{type}, \code{variogram_range}, and \code{iter} are ignored. See the Details section.}
 }
 \description{
 Experimental designs for computer experiments are used to construct parameter
@@ -76,6 +100,31 @@ space has does not have an observed combination that is unnecessarily close
 to any other point.
 }
 \details{
+\subsection{Augmenting an existing design}{
+
+\code{anchors} is used to add new combinations to a set of parameter combinations
+that have already been evaluated. The rows of \code{anchors} are returned first,
+in their original order and exactly as supplied, followed by new rows. New
+rows are chosen one at a time by a greedy maximin rule: each one maximizes
+the minimum distance to the anchors and to the rows already added. Distances
+are computed on the \verb{[0, 1]} scale of the parameters. Parameters with a
+single feasible value (a fixed range or a single value) are held constant
+and do not contribute to the distance.
+
+Candidates come from the parameter's feasible values when they can be
+enumerated (qualitative parameters, parameters with a fixed set of \code{values},
+and integer ranges). Otherwise a Halton sequence over \verb{[0, 1]} supplies
+candidates. Candidates are decoded to the parameter's units, then checked
+again for duplicates and feasible values; distances are recomputed from the
+decoded values. Because ties are broken by a canonical candidate order, the
+selected new rows do not depend on the order of the rows of \code{anchors}.
+
+When the feasible combinations are exhausted (or a fixed parameter leaves no
+room), fewer than \code{size - nrow(anchors)} rows are returned and a warning says
+so. If \code{size} is not larger than the number of anchors, only the anchors are
+returned.
+}
+
 The types of designs supported here are latin hypercube designs of
 different types. The simple designs produced by
 \code{\link[=grid_latin_hypercube]{grid_latin_hypercube()}} are space-filling but
@@ -150,6 +199,19 @@ grid_space_filling(
   learn_rate(c(0, 1), trans = scales::transform_log()),
   size = 10,
   original = FALSE
+)
+
+# Add new combinations to an existing set of experiments. The three
+# supplied rows are kept first, in order, and are never moved.
+done <- tibble::tibble(
+  penalty = c(1e-4, 1e-2, 1),
+  mixture = c(0, 0.5, 1)
+)
+grid_space_filling(
+  penalty(),
+  mixture(),
+  size = 8,
+  anchors = done
 )
 # ------------------------------------------------------------------------------
 # comparing methods

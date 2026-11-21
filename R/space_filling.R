@@ -21,6 +21,38 @@
 #'  for `type = "max_entropy"`.
 #' @param iter An integer for the maximum number of iterations used to find
 #'  a good design. Only used for `type = "max_entropy"`.
+#' @param anchors An optional data frame of parameter combinations that must be
+#'  kept exactly as supplied. Its columns must be named with the parameter
+#'  identifiers and it cannot contain duplicates or missing values. When used,
+#'  `size` is the total number of combinations returned (anchors plus new
+#'  combinations) and new combinations are selected by a maximin criterion;
+#'  `type`, `variogram_range`, and `iter` are ignored. See the Details section.
+#' @details
+#'
+#' ## Augmenting an existing design
+#'
+#' `anchors` is used to add new combinations to a set of parameter combinations
+#' that have already been evaluated. The rows of `anchors` are returned first,
+#' in their original order and exactly as supplied, followed by new rows. New
+#' rows are chosen one at a time by a greedy maximin rule: each one maximizes
+#' the minimum distance to the anchors and to the rows already added. Distances
+#' are computed on the `[0, 1]` scale of the parameters. Parameters with a
+#' single feasible value (a fixed range or a single value) are held constant
+#' and do not contribute to the distance.
+#'
+#' Candidates come from the parameter's feasible values when they can be
+#' enumerated (qualitative parameters, parameters with a fixed set of `values`,
+#' and integer ranges). Otherwise a Halton sequence over `[0, 1]` supplies
+#' candidates. Candidates are decoded to the parameter's units, then checked
+#' again for duplicates and feasible values; distances are recomputed from the
+#' decoded values. Because ties are broken by a canonical candidate order, the
+#' selected new rows do not depend on the order of the rows of `anchors`.
+#'
+#' When the feasible combinations are exhausted (or a fixed parameter leaves no
+#' room), fewer than `size - nrow(anchors)` rows are returned and a warning says
+#' so. If `size` is not larger than the number of anchors, only the anchors are
+#' returned.
+#'
 #' @references Sacks, Jerome & Welch, William & J. Mitchell, Toby, and Wynn, Henry.
 #'  (1989). Design and analysis of computer experiments. With comments and a
 #'  rejoinder by the authors. Statistical Science. 4. 10.1214/ss/1177012413.
@@ -47,6 +79,19 @@
 #'   learn_rate(c(0, 1), trans = scales::transform_log()),
 #'   size = 10,
 #'   original = FALSE
+#' )
+#'
+#' # Add new combinations to an existing set of experiments. The three
+#' # supplied rows are kept first, in order, and are never moved.
+#' done <- tibble::tibble(
+#'   penalty = c(1e-4, 1e-2, 1),
+#'   mixture = c(0, 0.5, 1)
+#' )
+#' grid_space_filling(
+#'   penalty(),
+#'   mixture(),
+#'   size = 8,
+#'   anchors = done
 #' )
 #' # ------------------------------------------------------------------------------
 #' # comparing methods
@@ -93,7 +138,8 @@ grid_space_filling <- function(
   ...,
   size = 5,
   type = "any",
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 ) {
   dots <- list(...)
   if (any(names(dots) == "levels")) {
@@ -114,7 +160,8 @@ grid_space_filling.default <- function(
   ...,
   size = 5,
   type = "any",
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 ) {
   if (missing(x)) {
     cli::cli_abort("At least one parameter object is required.")
@@ -134,7 +181,8 @@ grid_space_filling.parameters <- function(
   type = "any",
   variogram_range = 0.5,
   iter = 1000,
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 ) {
   check_dots_empty()
 
@@ -158,7 +206,8 @@ grid_space_filling.parameters <- function(
     type = type,
     variogram_range = variogram_range,
     iter = iter,
-    original = original
+    original = original,
+    anchors = anchors
   )
   names(grd) <- x$id
   grd
@@ -173,7 +222,8 @@ grid_space_filling.list <- function(
   type = "any",
   variogram_range = 0.5,
   iter = 1000,
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 ) {
   check_dots_empty()
 
@@ -199,7 +249,8 @@ grid_space_filling.list <- function(
     type = type,
     variogram_range = variogram_range,
     iter = iter,
-    original = original
+    original = original,
+    anchors = anchors
   )
   names(grd) <- y$id
   grd
@@ -215,7 +266,8 @@ grid_space_filling.param <- function(
   variogram_range = 0.5,
   iter = 1000,
   type = "any",
-  original = TRUE
+  original = TRUE,
+  anchors = NULL
 ) {
   param_list <- list(x, ...)
   param_names <- names(param_list)
@@ -237,7 +289,8 @@ grid_space_filling.param <- function(
     type = type,
     variogram_range = variogram_range,
     iter = iter,
-    original = original
+    original = original,
+    anchors = anchors
   )
   names(grd) <- y$id
   grd
@@ -260,6 +313,7 @@ make_sfd <- function(
   variogram_range = 0.5,
   iter = 1000,
   original = TRUE,
+  anchors = NULL,
   call = caller_env()
 ) {
   check_number_whole(size, min = 1, call = call)
@@ -275,6 +329,21 @@ make_sfd <- function(
   param_quos <- quos(...)
   params <- map(param_quos, eval_tidy)
   p <- length(params)
+
+  if (!is.null(anchors)) {
+    res <- make_anchored_sfd(
+      params,
+      size = size,
+      original = original,
+      anchors = anchors,
+      call = call
+    )
+    if (!is.null(res)) {
+      return(res)
+    }
+    # A zero-row `anchors` data frame means "no anchors": fall through to a
+    # standard design.
+  }
 
   if (size == 1) {
     res <- grid_random(params, size = size)

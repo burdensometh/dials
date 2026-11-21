@@ -1,5 +1,7 @@
 # dials (development version)
 
+* `grid_space_filling()` gains an `anchors` argument to add new combinations to a set of parameter combinations that have already been evaluated. The anchors are validated, encoded to a common unit scale, and kept exactly where they are; new rows are selected with a greedy maximin rule, re-checked after decoding, and returned after the anchors. Exhausted parameter spaces are reported with a warning instead of silently returning a different design.
+
 # dials 1.4.5
 
 * `grid_hybrid()` is a new function that crosses a space-filling design for some parameters with a regular grid for others. This is helpful for "submodel" parameters that are cheap to tune (#451).

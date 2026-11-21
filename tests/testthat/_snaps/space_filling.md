@@ -251,3 +251,124 @@
       x `a` must be a <param> object without unknowns.
       i See the `dials::finalize()` function.
 
+# fixed parameter spaces report that nothing can be added
+
+    Code
+      grid <- grid_space_filling(prm, size = 3, anchors = anchors)
+    Condition
+      Warning in `grid_space_filling()`:
+      ! No combinations can be added.
+      i Every parameter has a single feasible value, so the anchors already cover the whole space.
+
+# exhausted discrete spaces return only the remaining rows
+
+    Code
+      grid <- grid_space_filling(prm, size = 10, anchors = anchors)
+    Condition
+      Warning in `grid_space_filling()`:
+      ! Only 7 new combinations can be added, not 9.
+      i The discrete parameter space is exhausted.
+
+# `size` no larger than the anchors returns only the anchors
+
+    Code
+      grid <- grid_space_filling(prm, size = 2, anchors = anchors)
+
+# `anchors` validates its input
+
+    Code
+      grid_space_filling(prm, anchors = list(penalty = 0.1, mixture = 0.5))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` must be a data frame, not a list.
+
+---
+
+    Code
+      grid_space_filling(prm, anchors = tibble::tibble(penalty = 0.1))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` does not have a column for every parameter.
+      x Missing column: `mixture`.
+      i Parameter identifiers: "penalty" and "mixture".
+
+---
+
+    Code
+      grid_space_filling(prm, anchors = tibble::tibble(penalty = 0.1, mixture = 0.5,
+        other = 1))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` has columns that are not parameters.
+      x Unexpected column: `other`.
+      i Parameter identifiers: "penalty" and "mixture".
+
+---
+
+    Code
+      grid_space_filling(prm, anchors = tibble::tibble(penalty = 0.1, mixture = NA_real_))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` must not contain missing values.
+      x Missing values in row 1.
+
+---
+
+    Code
+      grid_space_filling(prm, anchors = tibble::tibble(penalty = c(0.1, 0.1),
+      mixture = c(0.5, 0.5)))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` must not contain duplicate combinations.
+      x Duplicate row: 1, 2.
+
+---
+
+    Code
+      grid_space_filling(prm, anchors = tibble::tibble(penalty = 0.1, mixture = 1.5))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` has values that are not valid for "mixture".
+      x 1 invalid value: 1.5.
+      i Anchors must be in the original units.
+
+---
+
+    Code
+      grid_space_filling(parameters(trees()), anchors = tibble::tibble(trees = 2.5))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` has values that are not valid for "trees".
+      x 1 invalid value: 2.5.
+      i Anchors must be in the original units.
+
+---
+
+    Code
+      grid_space_filling(parameters(penalty(), activation(c("relu", "tanh"))),
+      anchors = tibble::tibble(penalty = 0.1, activation = "foo"))
+    Condition
+      Error in `grid_space_filling()`:
+      ! `anchors` has values that are not valid for "activation".
+      x 1 invalid value: "foo".
+      i Anchors must be in the original units.
+
+---
+
+    Code
+      grid_space_filling(parameters(penalty()), anchors = tibble::tibble(penalty = "a"))
+    Condition
+      Error in `grid_space_filling()`:
+      ! The `anchors` column "penalty" must be a numeric vector.
+      x The column has class <character>.
+
+---
+
+    Code
+      grid_space_filling(parameters(activation(c("relu", "tanh"))), anchors = tibble::tibble(
+        activation = 1))
+    Condition
+      Error in `grid_space_filling()`:
+      ! The `anchors` column "activation" must be a character or logical vector.
+      x The column has class <numeric>.
+

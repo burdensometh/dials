@@ -412,3 +412,291 @@ test_that("pre-made designs respect the 'original argument", {
     expect_true(all(grd_trans$penalty <= 0))
   }
 })
+
+# anchors ----------------------------------------------------------------------
+
+test_that("anchors are kept, in order, and new rows are added", {
+  prm <- parameters(penalty(), mixture())
+  anchors <- tibble::tibble(
+    penalty = c(1e-4, 1e-2),
+    mixture = c(0.1, 0.9)
+  )
+
+  set.seed(1)
+  grid <- grid_space_filling(prm, size = 6, anchors = anchors)
+
+  expect_equal(nrow(grid), 6L)
+  # The anchors are returned first, unchanged and in their original order.
+  expect_identical(grid[1:2, ], anchors)
+  # New rows are unique and are not anchors.
+  expect_equal(anyDuplicated(as.data.frame(grid)), 0L)
+  new_rows <- grid[3:6, ]
+  anchor_keys <- paste(anchors$penalty, anchors$mixture)
+  expect_false(any(paste(new_rows$penalty, new_rows$mixture) %in% anchor_keys))
+})
+
+test_that("anchors are added to the `param` and `list` methods", {
+  anchors <- tibble::tibble(
+    penalty = c(1e-4, 1e-2),
+    mixture = c(0.1, 0.9)
+  )
+
+  from_param <- grid_space_filling(
+    penalty(),
+    mixture(),
+    size = 5,
+    anchors = anchors
+  )
+  from_list <- grid_space_filling(
+    list(penalty(), mixture()),
+    size = 5,
+    anchors = anchors
+  )
+
+  expect_identical(from_param[1:2, ], anchors)
+  expect_identical(from_list[1:2, ], anchors)
+  expect_identical(from_param, from_list)
+})
+
+test_that("new anchors do not depend on anchor order", {
+  prm <- parameters(penalty(), mixture())
+  anchors <- tibble::tibble(
+    penalty = c(1e-4, 1e-2, 1),
+    mixture = c(0.05, 0.5, 0.95)
+  )
+  shuffled <- anchors[c(3, 1, 2), ]
+
+  grid_1 <- grid_space_filling(prm, size = 8, anchors = anchors)
+  grid_2 <- grid_space_filling(prm, size = 8, anchors = shuffled)
+
+  expect_identical(grid_1[1:3, ], anchors)
+  expect_identical(grid_2[1:3, ], shuffled)
+
+  new_1 <- grid_1[4:8, ]
+  new_2 <- grid_2[4:8, ]
+  new_1 <- new_1[order(new_1$penalty, new_1$mixture), ]
+  new_2 <- new_2[order(new_2$penalty, new_2$mixture), ]
+  expect_identical(new_1, new_2)
+})
+
+test_that("anchor augmentation is deterministic", {
+  prm <- parameters(penalty(), mixture())
+  anchors <- tibble::tibble(penalty = c(1e-4, 1e-2), mixture = c(0.1, 0.9))
+
+  grid_1 <- grid_space_filling(prm, size = 6, anchors = anchors)
+  grid_2 <- grid_space_filling(prm, size = 6, anchors = anchors)
+  expect_identical(grid_1, grid_2)
+})
+
+test_that("anchors are preserved exactly", {
+  prm <- parameters(penalty(), mixture())
+  penalty_values <- 10^seq(-9, 0, length.out = 4)
+  mixture_values <- seq(0.01, 0.99, length.out = 4)
+  anchors <- tibble::tibble(
+    penalty = penalty_values,
+    mixture = mixture_values
+  )
+
+  grid <- grid_space_filling(prm, size = 8, anchors = anchors)
+  expect_identical(grid$penalty[1:4], penalty_values)
+  expect_identical(grid$mixture[1:4], mixture_values)
+})
+
+test_that("integer anchors return tuning-ready integer values", {
+  prm <- parameters(trees(), min_n())
+  anchors <- tibble::tibble(trees = c(1L, 2000L), min_n = c(2L, 40L))
+
+  grid <- grid_space_filling(prm, size = 8, anchors = anchors)
+
+  expect_identical(grid[1:2, ], anchors)
+  expect_type(grid$trees, "integer")
+  expect_type(grid$min_n, "integer")
+  expect_true(all(grid$trees >= 1 & grid$trees <= 2000))
+  expect_true(all(grid$min_n >= 2 & grid$min_n <= 40))
+  expect_equal(anyDuplicated(as.data.frame(grid)), 0L)
+})
+
+test_that("the maximin rule maximizes the minimum distance", {
+  prm <- parameters(mixture())
+  anchors <- tibble::tibble(mixture = c(0, 1))
+
+  grid <- grid_space_filling(prm, size = 5, anchors = anchors)
+  # The new points split the remaining space into equal gaps.
+  values <- sort(grid$mixture)
+  expect_equal(values, c(0, 0.25, 0.5, 0.75, 1), tolerance = 1e-6)
+  expect_true(min(diff(values)) > 0.2)
+
+  # Adding one more point makes the minimum gap strictly smaller.
+  bigger <- grid_space_filling(prm, size = 6, anchors = anchors)
+  expect_lt(min(diff(sort(bigger$mixture))), min(diff(values)))
+})
+
+test_that("fixed parameters are held constant", {
+  prm <- parameters(penalty(), mixture() |> value_set(0.5))
+  anchors <- tibble::tibble(penalty = c(1e-4, 1e-2), mixture = 0.5)
+
+  expect_silent(withr::with_options(
+    list(warn = 2),
+    grid <- grid_space_filling(prm, size = 5, anchors = anchors)
+  ))
+
+  expect_equal(nrow(grid), 5L)
+  expect_true(all(grid$mixture == 0.5))
+  expect_identical(grid[1:2, ], anchors)
+})
+
+test_that("fixed parameter spaces report that nothing can be added", {
+  prm <- parameters(mixture() |> value_set(0.5))
+  anchors <- tibble::tibble(mixture = 0.5)
+
+  expect_snapshot(
+    grid <- grid_space_filling(prm, size = 3, anchors = anchors)
+  )
+  expect_equal(grid, anchors)
+})
+
+test_that("exhausted discrete spaces return only the remaining rows", {
+  prm <- parameters(
+    penalty() |> value_set(-4:-1),
+    mixture() |> value_set(c(0.1, 0.5))
+  )
+  anchors <- tibble::tibble(penalty = 1e-4, mixture = 0.1)
+
+  expect_snapshot(
+    grid <- grid_space_filling(prm, size = 10, anchors = anchors)
+  )
+
+  # 4 * 2 feasible combinations in total, one of which is an anchor.
+  expect_equal(nrow(grid), 8L)
+  expect_equal(anyDuplicated(as.data.frame(grid)), 0L)
+  expect_identical(grid[1, ], anchors)
+})
+
+test_that("zero-row anchors fall back to a standard design", {
+  prm <- parameters(penalty(), mixture())
+  empty <- tibble::tibble(penalty = numeric(0), mixture = numeric(0))
+
+  set.seed(1)
+  with_empty <- grid_space_filling(prm, size = 4, type = "uniform", anchors = empty)
+  standard <- grid_space_filling(prm, size = 4, type = "uniform")
+
+  expect_identical(with_empty, standard)
+})
+
+test_that("`size` no larger than the anchors returns only the anchors", {
+  prm <- parameters(penalty(), mixture())
+  anchors <- tibble::tibble(penalty = c(1e-4, 1e-2), mixture = c(0.1, 0.9))
+
+  expect_snapshot(
+    grid <- grid_space_filling(prm, size = 2, anchors = anchors)
+  )
+  expect_identical(grid, anchors)
+
+  expect_warning(
+    sz_one <- grid_space_filling(prm, size = 1, anchors = anchors),
+    "smaller than the number of anchors"
+  )
+  expect_identical(sz_one, anchors)
+})
+
+test_that("anchors work with transformations", {
+  prm <- parameters(batch_size())
+  anchors <- tibble::tibble(batch_size = c(4L, 128L))
+
+  grid <- grid_space_filling(prm, size = 5, anchors = anchors)
+  expect_identical(grid[1:2, ], anchors)
+  expect_type(grid$batch_size, "integer")
+
+  # With `original = FALSE`, the anchors are on the transformed scale.
+  trans_anchors <- tibble::tibble(batch_size = c(2, 7))
+  trans_grid <- grid_space_filling(
+    prm,
+    size = 4,
+    original = FALSE,
+    anchors = trans_anchors
+  )
+  expect_identical(trans_grid[1:2, ], trans_anchors)
+})
+
+test_that("anchors work with qualitative parameters", {
+  prm <- parameters(penalty(), activation(c("relu", "tanh", "elu")))
+  anchors <- tibble::tibble(
+    penalty = c(1e-4, 1e-2),
+    activation = c("relu", "elu")
+  )
+
+  grid <- grid_space_filling(prm, size = 5, anchors = anchors)
+
+  expect_identical(grid[1:2, ], anchors)
+  expect_equal(nrow(grid), 5L)
+  expect_true(all(grid$activation %in% c("relu", "tanh", "elu")))
+})
+
+test_that("`anchors` validates its input", {
+  prm <- parameters(penalty(), mixture())
+
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(prm, anchors = list(penalty = 0.1, mixture = 0.5))
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(prm, anchors = tibble::tibble(penalty = 0.1))
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      prm,
+      anchors = tibble::tibble(penalty = 0.1, mixture = 0.5, other = 1)
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      prm,
+      anchors = tibble::tibble(penalty = 0.1, mixture = NA_real_)
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      prm,
+      anchors = tibble::tibble(penalty = c(0.1, 0.1), mixture = c(0.5, 0.5))
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      prm,
+      anchors = tibble::tibble(penalty = 0.1, mixture = 1.5)
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      parameters(trees()),
+      anchors = tibble::tibble(trees = 2.5)
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      parameters(penalty(), activation(c("relu", "tanh"))),
+      anchors = tibble::tibble(penalty = 0.1, activation = "foo")
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      parameters(penalty()),
+      anchors = tibble::tibble(penalty = "a")
+    )
+  )
+  expect_snapshot(
+    error = TRUE,
+    grid_space_filling(
+      parameters(activation(c("relu", "tanh"))),
+      anchors = tibble::tibble(activation = 1)
+    )
+  )
+})
